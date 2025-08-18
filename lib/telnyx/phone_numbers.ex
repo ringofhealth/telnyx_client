@@ -231,7 +231,37 @@ defmodule Telnyx.PhoneNumbers do
   """
   @spec assign_to_messaging_profile(String.t(), String.t(), String.t()) :: {:ok, map()} | {:error, Telnyx.Error.t()}
   def assign_to_messaging_profile(phone_number_id, messaging_profile_id, api_key) do
-    update(phone_number_id, %{messaging_profile_id: messaging_profile_id}, api_key)
+    headers = [
+      {"Content-Type", "application/json"},
+      {"Accept", "application/json"},
+      {"Authorization", "Bearer #{api_key}"}
+    ]
+
+    params = %{messaging_profile_id: messaging_profile_id}
+
+    case Jason.encode(params) do
+      {:ok, body} ->
+        case FinchClient.patch("/phone_numbers/#{phone_number_id}/messaging", headers, body, 10_000) do
+          {:ok, %{status: status, body: response_body}} when status in 200..299 ->
+            case Jason.decode(response_body) do
+              {:ok, %{"data" => data}} -> {:ok, data}
+              {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+              {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
+            end
+
+          {:ok, %{status: status, body: response_body}} ->
+            parse_error_response(response_body, status)
+
+          {:error, :timeout} ->
+            {:error, Telnyx.Error.network("Request timeout")}
+
+          {:error, reason} ->
+            {:error, Telnyx.Error.network("HTTP request failed: #{inspect(reason)}")}
+        end
+
+      {:error, reason} ->
+        {:error, Telnyx.Error.unknown("JSON encoding failed: #{inspect(reason)}")}
+    end
   end
 
   @doc """
