@@ -20,4 +20,10 @@ defmodule Telnyx.Client.HttpClient do
   """
   @callback get(url :: String.t(), headers :: headers(), timeout :: pos_integer()) ::
               {:ok, response()} | {:error, term()}
+
+  @doc """
+  Performs a PATCH request to the Telnyx API.
+  """
+  @callback patch(url :: String.t(), headers :: headers(), body :: body(), timeout :: pos_integer()) ::
+              {:ok, response()} | {:error, term()}
 end
