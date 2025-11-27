@@ -222,8 +222,9 @@ defmodule Telnyx.Webhook do
   end
 
   defp verify_signature(payload, timestamp, signature, public_key) do
-    # Telnyx signs: timestamp + "." + payload
-    signed_payload = "#{timestamp}.#{payload}"
+    # Telnyx signs: timestamp + "|" + payload (pipe-separated)
+    # See: https://developers.telnyx.com/development/api-fundamentals/webhooks/receiving-webhooks
+    signed_payload = "#{timestamp}|#{payload}"
 
     case :crypto.verify(:eddsa, :none, signed_payload, signature, [public_key, :ed25519]) do
       true -> :ok

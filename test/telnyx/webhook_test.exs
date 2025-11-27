@@ -221,7 +221,8 @@ defmodule Telnyx.WebhookTest do
   # Helper functions
 
   defp sign_payload(payload, timestamp) do
-    signed_payload = "#{timestamp}.#{payload}"
+    # Telnyx uses pipe separator: timestamp|payload
+    signed_payload = "#{timestamp}|#{payload}"
     signature = :crypto.sign(:eddsa, :none, signed_payload, [@test_private_key, :ed25519])
     Base.encode64(signature)
   end
