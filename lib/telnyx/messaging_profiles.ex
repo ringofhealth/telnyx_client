@@ -35,7 +35,7 @@ defmodule Telnyx.MessagingProfiles do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
             case Jason.decode(response_body) do
               {:ok, %{"data" => data}} -> {:ok, data}
-              {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+              {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
               {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
             end
 
@@ -68,7 +68,7 @@ defmodule Telnyx.MessagingProfiles do
       {:ok, %{status: status, body: response_body}} when status in 200..299 ->
         case Jason.decode(response_body) do
           {:ok, %{"data" => data}} -> {:ok, data}
-          {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+          {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
           {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
         end
 
@@ -97,7 +97,7 @@ defmodule Telnyx.MessagingProfiles do
       {:ok, %{status: status, body: response_body}} when status in 200..299 ->
         case Jason.decode(response_body) do
           {:ok, %{"data" => data}} -> {:ok, data}
-          {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+          {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
           {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
         end
 
@@ -155,7 +155,7 @@ defmodule Telnyx.MessagingProfiles do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
             case Jason.decode(response_body) do
               {:ok, %{"data" => data}} -> {:ok, data}
-              {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+              {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
               {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
             end
 
@@ -204,7 +204,7 @@ defmodule Telnyx.MessagingProfiles do
     end
   end
 
-  def create_or_update(%{name: name} = params, api_key) do
+  def create_or_update(%{name: _name} = params, api_key) do
     # Handle atom keys
     string_params = params |> Enum.map(fn {k, v} -> {to_string(k), v} end) |> Map.new()
     create_or_update(string_params, api_key)

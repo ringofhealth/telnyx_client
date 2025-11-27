@@ -40,6 +40,7 @@ defmodule Telnyx.MixProject do
       {:finch, "~> 0.18.0"},
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.0"},
+      {:plug, "~> 1.14", optional: true},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false}
     ]
   end
