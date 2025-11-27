@@ -27,3 +27,6 @@ telnyx-*.tar
 
 # Ignore mock server files
 /test/telnyx-mock
+
+# Ignore macOS Finder metadata
+.DS_Store

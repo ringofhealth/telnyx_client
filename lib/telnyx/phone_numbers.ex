@@ -38,7 +38,7 @@ defmodule Telnyx.PhoneNumbers do
       {:ok, %{status: status, body: response_body}} when status in 200..299 ->
         case Jason.decode(response_body) do
           {:ok, %{"data" => data}} -> {:ok, data}
-          {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+          {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
           {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
         end
 
@@ -100,7 +100,7 @@ defmodule Telnyx.PhoneNumbers do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
             case Jason.decode(response_body) do
               {:ok, %{"data" => data}} -> {:ok, data}
-              {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+              {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
               {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
             end
 
@@ -133,7 +133,7 @@ defmodule Telnyx.PhoneNumbers do
       {:ok, %{status: status, body: response_body}} when status in 200..299 ->
         case Jason.decode(response_body) do
           {:ok, %{"data" => data}} -> {:ok, data}
-          {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+          {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
           {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
         end
 
@@ -162,7 +162,7 @@ defmodule Telnyx.PhoneNumbers do
       {:ok, %{status: status, body: response_body}} when status in 200..299 ->
         case Jason.decode(response_body) do
           {:ok, %{"data" => data}} -> {:ok, data}
-          {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+          {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
           {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
         end
 
@@ -199,11 +199,11 @@ defmodule Telnyx.PhoneNumbers do
       {:ok, body} ->
         case FinchClient.patch("/phone_numbers/#{phone_number_id}", headers, body, 10_000) do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
-            case Jason.decode(response_body) do
-              {:ok, %{"data" => data}} -> {:ok, data}
-              {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
-              {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
-            end
+        case Jason.decode(response_body) do
+          {:ok, %{"data" => data}} -> {:ok, data}
+          {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+          {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
+        end
 
           {:ok, %{status: status, body: response_body}} ->
             parse_error_response(response_body, status)
@@ -245,7 +245,7 @@ defmodule Telnyx.PhoneNumbers do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
             case Jason.decode(response_body) do
               {:ok, %{"data" => data}} -> {:ok, data}
-              {:ok, response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+              {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
               {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
             end
 
