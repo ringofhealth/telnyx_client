@@ -39,6 +39,10 @@ defmodule Telnyx.CallControl do
       [:telnyx, :call_control, :answer, :stop]
       [:telnyx, :call_control, :answer, :exception]
 
+      [:telnyx, :call_control, :refer, :start]
+      [:telnyx, :call_control, :refer, :stop]
+      [:telnyx, :call_control, :refer, :exception]
+
   """
 
   alias Telnyx.CallControl.Result
@@ -47,6 +51,78 @@ defmodule Telnyx.CallControl do
   require Logger
 
   @default_timeout 10_000
+
+  @doc """
+  Transfer a call using SIP REFER (blind/cold transfer).
+
+  This instructs Telnyx to perform a SIP REFER on the active call, handing
+  the call off to the destination and removing Telnyx from the media path
+  after the transfer completes.
+
+  **Cost:** $0.10 flat fee (vs per-minute for regular transfer).
+  **Trade-off:** Telnyx exits the call - no recording, monitoring, or further commands.
+
+  The destination must be a valid SIP URI or PSTN number in E.164 format.
+
+  ## Options
+
+  - `:api_key` - Telnyx API key (falls back to application config/env)
+  - `:timeout` - Request timeout in milliseconds (default: #{@default_timeout})
+  - `:custom_headers` - List of custom SIP headers to pass to destination
+
+  ## Examples
+
+      # REFER to external PSTN call center
+      Telnyx.CallControl.refer("v2:abc123", "+18005551234")
+
+      # REFER with custom headers (pass context to destination)
+      Telnyx.CallControl.refer("v2:abc123", "+18005551234",
+        custom_headers: [
+          {"X-Caller-ID", caller_id},
+          {"X-Reason", "after-hours-routing"}
+        ]
+      )
+
+      # REFER with explicit API key
+      Telnyx.CallControl.refer("v2:abc123", destination, api_key: "KEY...")
+
+  ## Webhook Events
+
+  - `call.refer.started` - REFER initiated
+  - `call.refer.completed` - REFER successful, Telnyx exited
+  - `call.refer.failed` - REFER failed (call may drop)
+
+  ## Returns
+
+      {:ok, %Telnyx.CallControl.Result{}} - Command executed successfully
+      {:error, %Telnyx.Error{}} - Command failed
+
+  """
+  @spec refer(String.t(), String.t(), keyword()) ::
+          {:ok, Result.t()} | {:error, Telnyx.Error.t()}
+  def refer(call_control_id, destination, opts \\ []) do
+    params = build_refer_params(destination, opts)
+    execute_command(:refer, call_control_id, params, opts)
+  end
+
+  defp build_refer_params(destination, opts) do
+    base = %{to: destination}
+
+    case Keyword.get(opts, :custom_headers) do
+      nil ->
+        base
+
+      headers when is_list(headers) ->
+        # Convert list of tuples to list of maps with name/value keys
+        formatted_headers =
+          Enum.map(headers, fn
+            {name, value} -> %{name: name, value: value}
+            %{name: _, value: _} = header -> header
+          end)
+
+        Map.put(base, :custom_headers, formatted_headers)
+    end
+  end
 
   @doc """
   Transfer a call to a destination.

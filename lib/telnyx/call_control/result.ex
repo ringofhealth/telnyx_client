@@ -13,7 +13,7 @@ defmodule Telnyx.CallControl.Result do
     :call_control_id
   ]
 
-  @type action :: :transfer | :hangup | :answer
+  @type action :: :transfer | :hangup | :answer | :refer
 
   @type t :: %__MODULE__{
           command_id: String.t(),

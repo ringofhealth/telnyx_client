@@ -50,6 +50,59 @@ defmodule Telnyx.CallControlTest do
     end
   end
 
+  describe "refer/3" do
+    test "returns error when no API key is configured" do
+      Application.delete_env(:telnyx, :api_key)
+
+      assert {:error, %Error{type: :authentication}} =
+               CallControl.refer("v2:test123", "+18005551234")
+    end
+
+    test "returns error when API key is empty" do
+      Application.delete_env(:telnyx, :api_key)
+
+      assert {:error, %Error{type: :authentication, message: message}} =
+               CallControl.refer("v2:test123", "+18005551234", api_key: "")
+
+      assert message =~ "cannot be empty"
+    end
+
+    test "uses api_key from opts over application config" do
+      Application.put_env(:telnyx, :api_key, "app-config-key")
+
+      assert {:error, %Error{}} =
+               CallControl.refer("v2:test123", "+18005551234", api_key: "explicit-key")
+
+      Application.delete_env(:telnyx, :api_key)
+    end
+
+    test "reads api_key from {:system, env_var} config" do
+      System.put_env("TEST_TELNYX_API_KEY", "env-var-key")
+      Application.put_env(:telnyx, :api_key, {:system, "TEST_TELNYX_API_KEY"})
+
+      assert {:error, %Error{}} =
+               CallControl.refer("v2:test123", "+18005551234")
+
+      System.delete_env("TEST_TELNYX_API_KEY")
+      Application.delete_env(:telnyx, :api_key)
+    end
+
+    test "accepts custom_headers option" do
+      Application.put_env(:telnyx, :api_key, "test-key")
+
+      # Will fail at API level but validates the params are accepted
+      assert {:error, %Error{}} =
+               CallControl.refer("v2:test123", "+18005551234",
+                 custom_headers: [
+                   {"X-Caller-ID", "caller-123"},
+                   {"X-Reason", "after-hours"}
+                 ]
+               )
+
+      Application.delete_env(:telnyx, :api_key)
+    end
+  end
+
   describe "hangup/2" do
     test "returns error when no API key is configured" do
       Application.delete_env(:telnyx, :api_key)

@@ -75,7 +75,7 @@ Telnyx.CallControl.transfer(call_control_id, "+18005551234")
 app_id = app["id"]
 
 # Find a phone number by its E.164 string
-{:ok, phone} = Telnyx.PhoneNumbers.find_by_number("+18555345529", api_key)
+{:ok, phone} = Telnyx.PhoneNumbers.find_by_number("+18555550123", api_key)
 
 # Assign the phone number to the Call Control Application (connection)
 {:ok, _updated} =
@@ -92,9 +92,24 @@ The Call Control module provides commands for routing and managing inbound calls
 
 | Function | Description |
 |----------|-------------|
-| `transfer/3` | Transfer a call to a SIP URI or PSTN number |
+| `transfer/3` | Transfer a call (Telnyx stays in media path, per-minute billing) |
+| `refer/3` | SIP REFER blind transfer (Telnyx exits, $0.10 flat fee) |
 | `hangup/2` | Terminate an active call |
 | `answer/2` | Answer an incoming call (required before playing audio) |
+
+### Transfer vs Refer: When to Use Each
+
+| Scenario | Use `transfer/3` | Use `refer/3` |
+|----------|------------------|---------------|
+| **To LiveKit SIP** | ✅ (SIP is cheap) | ❌ (no benefit) |
+| **To PSTN (long calls >5min)** | ❌ (expensive) | ✅ (50%+ cheaper) |
+| **Need call recording** | ✅ (Telnyx records) | ❌ (can't record) |
+| **Need call monitoring** | ✅ (stay in path) | ❌ (Telnyx exits) |
+| **Short calls (<5min)** | ✅ (cheaper) | ⚠️ ($0.10 surcharge) |
+
+**Cost comparison for 10-minute call to PSTN:**
+- `transfer/3`: ~$0.26 (per-minute both legs)
+- `refer/3`: ~$0.115 ($0.10 flat + brief inbound)
 
 ### Transfer Calls
 
@@ -118,6 +133,44 @@ The Call Control module provides commands for routing and managing inbound calls
   api_key: "KEY..."
 )
 ```
+
+### SIP REFER (Cold/Blind Transfer)
+
+Use `refer/3` for cheap transfers to external PSTN numbers. Telnyx exits the call path entirely after the REFER completes - you pay a flat $0.10 instead of per-minute.
+
+```elixir
+# Basic REFER to call center
+{:ok, result} = Telnyx.CallControl.refer(
+  call_control_id,
+  "+18005551234"
+)
+
+# REFER with custom SIP headers (pass context to destination)
+{:ok, result} = Telnyx.CallControl.refer(
+  call_control_id,
+  "+18005551234",
+  custom_headers: [
+    {"X-Caller-ID", caller_id},
+    {"X-Account-ID", account_id},
+    {"X-Reason", "after-hours-routing"}
+  ]
+)
+```
+
+**How it works:**
+1. Caller is connected to Telnyx
+2. You call `refer/3` with the destination
+3. Telnyx sends SIP REFER to caller's carrier
+4. Caller's carrier dials the destination directly
+5. Telnyx is **gone** - $0.10 flat fee, no per-minute charges
+
+**Trade-offs:** After REFER succeeds, you lose all call control:
+- No recording (destination must record if needed)
+- No monitoring or listen-in
+- No DTMF or other commands
+- No further webhooks about the call
+
+**Webhook events:** `call.refer.started`, `call.refer.completed`, `call.refer.failed`
 
 ### Hangup Calls
 
@@ -252,7 +305,7 @@ defmodule MyAppWeb.TelnyxWebhookController do
   end
 
   # Simple routing logic based on the called number.
-  defp route_call("+18555345529"), do: {:livekit, "sip:+14155551234@trunk.livekit.cloud"}
+  defp route_call("+18555550123"), do: {:livekit, "sip:+14155551234@trunk.livekit.cloud"}
   defp route_call("+18005551234"), do: {:call_center, "+18005559876"}
   defp route_call(_other), do: :unknown
 end
@@ -579,6 +632,10 @@ The library emits telemetry events for comprehensive observability:
 [:telnyx, :call_control, :answer, :start]
 [:telnyx, :call_control, :answer, :stop]
 [:telnyx, :call_control, :answer, :exception]
+
+[:telnyx, :call_control, :refer, :start]
+[:telnyx, :call_control, :refer, :stop]
+[:telnyx, :call_control, :refer, :exception]
 ```
 
 ### Example Telemetry Handler
@@ -699,7 +756,7 @@ The `Telnyx.Provisioning.CallRouting` module provides idempotent, high-level fun
     application_name: "violet-call-router-prod",
     webhook_event_url: "https://api.example.com/webhooks/telnyx/inbound",
     webhook_api_version: "2",
-    phone_number: "+18555345529"
+    phone_number: "+18555550123"
   },
   api_key
 )
@@ -725,7 +782,7 @@ result.phone_number["id"]    # => "phone-number-uuid..."
 ```elixir
 # Assign by E.164 phone number string (automatically looks up the phone number ID)
 :ok = Telnyx.Provisioning.CallRouting.assign_phone_number(
-  "+18555345529",
+  "+18555550123",
   app_id,
   api_key
 )
@@ -830,6 +887,7 @@ Search, buy, and manage phone numbers:
 |-----------|--------|----------|
 | Send SMS | POST | `/v2/messages` |
 | Transfer Call | POST | `/v2/calls/{call_control_id}/actions/transfer` |
+| Refer Call (SIP REFER) | POST | `/v2/calls/{call_control_id}/actions/refer` |
 | Answer Call | POST | `/v2/calls/{call_control_id}/actions/answer` |
 | Hangup Call | POST | `/v2/calls/{call_control_id}/actions/hangup` |
 | List Profiles | GET | `/v2/messaging_profiles` |
@@ -1157,6 +1215,7 @@ end
 - [Transfer Call](https://developers.telnyx.com/api/call-control/transfer-call)
 - [Answer Call](https://developers.telnyx.com/api/call-control/answer-call)
 - [Hangup Call](https://developers.telnyx.com/api/call-control/hangup-call)
+- [Refer Call (SIP REFER)](https://developers.telnyx.com/api/call-control/refer-call)
 - [Voice API Commands](https://developers.telnyx.com/docs/voice/programmable-voice/voice-api-commands-and-resources)
 - [Webhook Signature Validation](https://developers.telnyx.com/development/api-fundamentals/webhooks/receiving-webhooks)
 - [SMS Messaging API](https://developers.telnyx.com/docs/messaging/sms-api)
