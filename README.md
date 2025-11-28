@@ -61,6 +61,27 @@ Telnyx.CallControl.transfer(call_control_id, "+18005551234")
 # => {:ok, %Telnyx.CallControl.Result{command_id: "cmd_abc", status: :ok}}
 ```
 
+### 4. Manage Call Control Applications & Assign Numbers
+
+```elixir
+# Create or look up a Call Control Application
+{:ok, app} =
+  Telnyx.CallControlApplication.create(%{
+    application_name: "violet-nexus-call-router-production",
+    webhook_event_url: "https://your-app.com/webhooks/telnyx/inbound",
+    webhook_api_version: "2"
+  }, api_key)
+
+app_id = app["id"]
+
+# Find a phone number by its E.164 string
+{:ok, phone} = Telnyx.PhoneNumbers.find_by_number("+18555345529", api_key)
+
+# Assign the phone number to the Call Control Application (connection)
+{:ok, _updated} =
+  Telnyx.PhoneNumbers.assign_to_call_control_application(phone["id"], app_id, api_key)
+```
+
 ---
 
 ## Call Control API
@@ -125,12 +146,92 @@ All commands return a structured result:
 }
 ```
 
-### Inbound Call Routing Example
+---
+
+## Call Control Applications
+
+The Call Control Applications API manages inbound voice routing
+configurations. The application `id` is used as the `connection_id` when
+assigning phone numbers.
+
+### Create a Call Control Application
 
 ```elixir
+params = %{
+  application_name: "violet-nexus-call-router-production",
+  webhook_event_url: "https://your-app.com/webhooks/telnyx/inbound",
+  webhook_api_version: "2"
+}
+
+{:ok, app} = Telnyx.CallControlApplication.create(params, api_key)
+app_id = app["id"]
+```
+
+### List and Filter Applications
+
+```elixir
+# List all applications
+{:ok, apps} = Telnyx.CallControlApplication.list(api_key)
+
+# Filter by application_name and paginate
+{:ok, apps} =
+  Telnyx.CallControlApplication.list(api_key,
+    filter: %{application_name: "violet-nexus"},
+    page: %{size: 20, number: 1}
+  )
+
+# Convenience helper to find by application_name
+{:ok, app} = Telnyx.CallControlApplication.find_by_application_name("violet-nexus", api_key)
+```
+
+### Update and Delete Applications
+
+```elixir
+# Update an application (e.g., pause it)
+{:ok, app} = Telnyx.CallControlApplication.update(app_id, %{active: false}, api_key)
+
+# Delete an application
+:ok = Telnyx.CallControlApplication.delete(app_id, api_key)
+```
+
+### End-to-End Inbound Call Routing Example
+
+This example shows the full flow:
+
+1. Create a Call Control Application.
+2. Assign a phone number to the application (connection).
+3. Handle inbound webhooks and route calls based on the called number.
+
+```elixir
+defmodule MyApp.TelnyxSetup do
+  @doc """
+  Create (or look up) a Call Control Application and assign a phone number.
+  """
+  def ensure_call_control_routing!(api_key, phone_number) do
+    # Create or fetch the Call Control Application
+    {:ok, app} =
+      Telnyx.CallControlApplication.create(%{
+        application_name: "violet-nexus-call-router-production",
+        webhook_event_url: "https://your-app.com/webhooks/telnyx/inbound",
+        webhook_api_version: "2"
+      }, api_key)
+
+    app_id = app["id"]
+
+    # Look up the phone number by its E.164 string and assign it to the app
+    {:ok, phone} = Telnyx.PhoneNumbers.find_by_number(phone_number, api_key)
+
+    {:ok, _updated} =
+      Telnyx.PhoneNumbers.assign_to_call_control_application(phone["id"], app_id, api_key)
+
+    :ok
+  end
+end
+
 defmodule MyAppWeb.TelnyxWebhookController do
   use MyAppWeb, :controller
 
+  # Called by Telnyx when an inbound call is received.
   def inbound(conn, %{"data" => %{"payload" => payload}}) do
     call_control_id = payload["call_control_id"]
     to_number = payload["to"]
@@ -149,6 +250,11 @@ defmodule MyAppWeb.TelnyxWebhookController do
         json(conn, %{status: "unknown_number"})
     end
   end
+
+  # Simple routing logic based on the called number.
+  defp route_call("+18555345529"), do: {:livekit, "sip:+14155551234@trunk.livekit.cloud"}
+  defp route_call("+18005551234"), do: {:call_center, "+18005559876"}
+  defp route_call(_other), do: :unknown
 end
 ```
 
@@ -580,6 +686,63 @@ MyApp.SMS.send_client_sms("client_east", %{
 
 ---
 
+## Provisioning (High-Level Helpers)
+
+The `Telnyx.Provisioning.CallRouting` module provides idempotent, high-level functions for setting up call routing infrastructure. These functions are designed to be safe to run multiple times.
+
+### Provision Complete Setup
+
+```elixir
+# Provision a Call Control Application and assign a phone number in one call
+{:ok, result} = Telnyx.Provisioning.CallRouting.provision(
+  %{
+    application_name: "violet-call-router-prod",
+    webhook_event_url: "https://api.example.com/webhooks/telnyx/inbound",
+    webhook_api_version: "2",
+    phone_number: "+18555345529"
+  },
+  api_key
+)
+
+# Result contains both the application and phone number details
+result.application["id"]     # => "1234567890-abcd-efgh..."
+result.phone_number["id"]    # => "phone-number-uuid..."
+```
+
+### Ensure Application Exists (Idempotent)
+
+```elixir
+# Creates the application if it doesn't exist, otherwise returns the existing one
+{:ok, app} = Telnyx.Provisioning.CallRouting.ensure_application_exists(
+  "violet-call-router-prod",
+  %{webhook_event_url: "https://example.com/webhooks"},
+  api_key
+)
+```
+
+### Assign Phone Number to Application
+
+```elixir
+# Assign by E.164 phone number string (automatically looks up the phone number ID)
+:ok = Telnyx.Provisioning.CallRouting.assign_phone_number(
+  "+18555345529",
+  app_id,
+  api_key
+)
+```
+
+### Get Application ID by Name
+
+```elixir
+# Get just the application ID for use in other operations
+{:ok, app_id} = Telnyx.Provisioning.CallRouting.get_application_id(
+  "violet-call-router-prod",
+  api_key
+)
+```
+
+---
+
 ## Management APIs
 
 ### Messaging Profiles
@@ -673,6 +836,12 @@ Search, buy, and manage phone numbers:
 | Create Profile | POST | `/v2/messaging_profiles` |
 | List Numbers | GET | `/v2/phone_numbers` |
 | Buy Number | POST | `/v2/phone_number_orders` |
+| Update Number | PATCH | `/v2/phone_numbers/{id}` |
+| List Call Control Apps | GET | `/v2/call_control_applications` |
+| Create Call Control App | POST | `/v2/call_control_applications` |
+| Get Call Control App | GET | `/v2/call_control_applications/{id}` |
+| Update Call Control App | PATCH | `/v2/call_control_applications/{id}` |
+| Delete Call Control App | DELETE | `/v2/call_control_applications/{id}` |
 
 ### Webhook Headers
 

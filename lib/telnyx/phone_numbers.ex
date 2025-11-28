@@ -229,7 +229,8 @@ defmodule Telnyx.PhoneNumbers do
       {:ok, %{"messaging_profile_id" => "profile-123", ...}}
 
   """
-  @spec assign_to_messaging_profile(String.t(), String.t(), String.t()) :: {:ok, map()} | {:error, Telnyx.Error.t()}
+  @spec assign_to_messaging_profile(String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, Telnyx.Error.t()}
   def assign_to_messaging_profile(phone_number_id, messaging_profile_id, api_key) do
     headers = [
       {"Content-Type", "application/json"},
@@ -262,6 +263,29 @@ defmodule Telnyx.PhoneNumbers do
       {:error, reason} ->
         {:error, Telnyx.Error.unknown("JSON encoding failed: #{inspect(reason)}")}
     end
+  end
+
+  @doc """
+  Assigns a phone number to a Call Control Application.
+
+  This sets the phone number's `connection_id` to the given Call Control
+  Application `id`.
+
+  The `phone_number_id` is the Telnyx UUID for the phone number. To look
+  up a phone number by E.164 number, use `find_by_number/2` and then pass
+  the returned `"id"` field to this function.
+
+  ## Examples
+
+      iex> {:ok, phone} = Telnyx.PhoneNumbers.find_by_number("+18555345529", api_key)
+      iex> Telnyx.PhoneNumbers.assign_to_call_control_application(phone["id"], app_id, api_key)
+      {:ok, %{"connection_id" => app_id, ...}}
+
+  """
+  @spec assign_to_call_control_application(String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, Telnyx.Error.t()}
+  def assign_to_call_control_application(phone_number_id, call_control_application_id, api_key) do
+    update(phone_number_id, %{connection_id: call_control_application_id}, api_key)
   end
 
   @doc """

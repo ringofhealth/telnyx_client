@@ -57,6 +57,33 @@ defmodule Telnyx.Client.FinchClient do
     end
   end
 
+  @doc """
+  Performs a DELETE request to the Telnyx API.
+
+  This is used for deleting resources such as Call Control Applications.
+  """
+  def delete(path, headers, timeout) do
+    url = build_url(path)
+
+    request = Finch.build(:delete, url, headers)
+
+    case Finch.request(request, Telnyx.Finch, receive_timeout: timeout) do
+      {:ok, %Finch.Response{status: status, body: response_body}} ->
+        {:ok, %{status: status, body: response_body}}
+
+      {:error, %Finch.Error{reason: :timeout}} ->
+        {:error, :timeout}
+
+      {:error, %Finch.Error{reason: reason}} ->
+        Logger.warning("Telnyx HTTP request failed", reason: reason, url: url)
+        {:error, reason}
+
+      {:error, reason} ->
+        Logger.warning("Telnyx HTTP request failed", reason: reason, url: url)
+        {:error, reason}
+    end
+  end
+
   @impl true
   def patch(path, headers, body, timeout) do
     url = build_url(path)
