@@ -9,11 +9,12 @@ defmodule Telnyx.Provisioning.CallRouting do
 
   ## Usage
 
-      # Provision a complete call routing setup
+      # Provision a complete call routing setup (with outbound profile for transfers/refers)
       {:ok, result} = Telnyx.Provisioning.CallRouting.provision(
         %{
           application_name: "my-call-router",
           webhook_event_url: "https://example.com/webhooks/telnyx",
+          outbound_profile_name: "my-outbound-profile",
           phone_number: "+18005551234"
         },
         api_key
@@ -26,6 +27,18 @@ defmodule Telnyx.Provisioning.CallRouting do
         api_key
       )
 
+      {:ok, profile} = Telnyx.Provisioning.CallRouting.ensure_outbound_profile_exists(
+        "my-outbound-profile",
+        %{traffic_type: "conversational"},
+        api_key
+      )
+
+      :ok = Telnyx.Provisioning.CallRouting.assign_outbound_profile_to_application(
+        app["id"],
+        profile["id"],
+        api_key
+      )
+
       :ok = Telnyx.Provisioning.CallRouting.assign_phone_number(
         "+18005551234",
         app["id"],
@@ -34,25 +47,29 @@ defmodule Telnyx.Provisioning.CallRouting do
 
   """
 
-  alias Telnyx.{CallControlApplication, PhoneNumbers, Error}
+  alias Telnyx.{CallControlApplication, OutboundVoiceProfiles, PhoneNumbers, Error}
 
   @type provision_params :: %{
           required(:application_name) => String.t(),
           required(:webhook_event_url) => String.t(),
           optional(:webhook_api_version) => String.t(),
+          optional(:outbound_profile_name) => String.t(),
+          optional(:outbound_profile_params) => map(),
           optional(:phone_number) => String.t()
         }
 
   @type provision_result :: %{
           application: map(),
+          outbound_profile: map() | nil,
           phone_number: map() | nil
         }
 
   @doc """
   Provisions a complete call routing setup.
 
-  Creates or finds the Call Control Application and optionally assigns
-  a phone number to it. This operation is idempotent.
+  Creates or finds the Call Control Application, optionally creates and assigns
+  an Outbound Voice Profile (required for transfers/refers), and optionally assigns
+  a phone number. This operation is idempotent.
 
   ## Parameters
 
@@ -60,12 +77,14 @@ defmodule Telnyx.Provisioning.CallRouting do
     - `:application_name` - Name for the Call Control Application (required)
     - `:webhook_event_url` - URL for receiving webhook events (required)
     - `:webhook_api_version` - API version for webhooks (default: "2")
+    - `:outbound_profile_name` - Name for Outbound Voice Profile (optional but recommended)
+    - `:outbound_profile_params` - Additional params for profile (optional)
     - `:phone_number` - Phone number to assign (optional, E.164 format)
   - `api_key` - Telnyx API key
 
   ## Returns
 
-  - `{:ok, %{application: app, phone_number: phone}}` on success
+  - `{:ok, %{application: app, outbound_profile: profile, phone_number: phone}}` on success
   - `{:error, Telnyx.Error.t()}` on failure
 
   ## Examples
@@ -73,10 +92,11 @@ defmodule Telnyx.Provisioning.CallRouting do
       iex> params = %{
       ...>   application_name: "violet-call-router-prod",
       ...>   webhook_event_url: "https://api.example.com/webhooks/telnyx/inbound",
+      ...>   outbound_profile_name: "violet-outbound-prod",
       ...>   phone_number: "+18555345529"
       ...> }
       iex> Telnyx.Provisioning.CallRouting.provision(params, api_key)
-      {:ok, %{application: %{"id" => "...", ...}, phone_number: %{"id" => "...", ...}}}
+      {:ok, %{application: %{"id" => "..."}, outbound_profile: %{"id" => "..."}, phone_number: %{"id" => "..."}}}
 
   """
   @spec provision(provision_params(), String.t()) ::
@@ -86,8 +106,9 @@ defmodule Telnyx.Provisioning.CallRouting do
          {:ok, webhook_event_url} <- get_required(params, :webhook_event_url),
          app_params <- build_app_params(webhook_event_url, params),
          {:ok, application} <- ensure_application_exists(application_name, app_params, api_key),
+         {:ok, outbound_profile} <- maybe_setup_outbound_profile(params, application["id"], api_key),
          {:ok, phone_number} <- maybe_assign_phone_number(params, application["id"], api_key) do
-      {:ok, %{application: application, phone_number: phone_number}}
+      {:ok, %{application: application, outbound_profile: outbound_profile, phone_number: phone_number}}
     end
   end
 
@@ -134,6 +155,88 @@ defmodule Telnyx.Provisioning.CallRouting do
 
       {:error, error} ->
         {:error, error}
+    end
+  end
+
+  @doc """
+  Ensures an Outbound Voice Profile exists with the given name.
+
+  If a profile with the name already exists, it returns that profile.
+  Otherwise, it creates a new one with the provided parameters.
+
+  ## Parameters
+
+  - `profile_name` - The unique name for the profile
+  - `params` - Profile parameters (used only when creating):
+    - `:traffic_type` - "conversational" (default) or "short_duration"
+    - `:service_plan` - "us", "international", "global"
+    - `:concurrent_call_limit` - Max concurrent calls (optional)
+  - `api_key` - Telnyx API key
+
+  ## Returns
+
+  - `{:ok, profile}` - The existing or newly created profile
+  - `{:error, Telnyx.Error.t()}` - On failure
+
+  ## Examples
+
+      iex> params = %{traffic_type: "conversational"}
+      iex> Telnyx.Provisioning.CallRouting.ensure_outbound_profile_exists("my-profile", params, api_key)
+      {:ok, %{"id" => "profile-123", "name" => "my-profile", ...}}
+
+  """
+  @spec ensure_outbound_profile_exists(String.t(), map(), String.t()) ::
+          {:ok, map()} | {:error, Error.t()}
+  def ensure_outbound_profile_exists(profile_name, params, api_key) do
+    case OutboundVoiceProfiles.find_by_name(profile_name, api_key) do
+      {:ok, profile} ->
+        {:ok, profile}
+
+      {:error, %Error{code: "outbound_voice_profile_not_found"}} ->
+        create_params =
+          params
+          |> Map.put(:name, profile_name)
+          |> Map.put_new(:traffic_type, "conversational")
+
+        OutboundVoiceProfiles.create(create_params, api_key)
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  @doc """
+  Assigns an Outbound Voice Profile to a Call Control Application.
+
+  This is required for the application to make outbound calls (transfers, refers, dials).
+
+  ## Parameters
+
+  - `application_id` - The Call Control Application ID
+  - `profile_id` - The Outbound Voice Profile ID
+  - `api_key` - Telnyx API key
+
+  ## Returns
+
+  - `:ok` on success
+  - `{:error, Telnyx.Error.t()}` on failure
+
+  ## Examples
+
+      iex> Telnyx.Provisioning.CallRouting.assign_outbound_profile_to_application("app-123", "profile-456", api_key)
+      :ok
+
+  """
+  @spec assign_outbound_profile_to_application(String.t(), String.t(), String.t()) ::
+          :ok | {:error, Error.t()}
+  def assign_outbound_profile_to_application(application_id, profile_id, api_key) do
+    case CallControlApplication.update(
+           application_id,
+           %{outbound_voice_profile_id: profile_id},
+           api_key
+         ) do
+      {:ok, _updated} -> :ok
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -217,6 +320,24 @@ defmodule Telnyx.Provisioning.CallRouting do
 
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp maybe_setup_outbound_profile(
+         %{outbound_profile_name: profile_name} = params,
+         application_id,
+         api_key
+       )
+       when is_binary(profile_name) and profile_name != "" do
+    profile_params = Map.get(params, :outbound_profile_params, %{})
+
+    with {:ok, profile} <- ensure_outbound_profile_exists(profile_name, profile_params, api_key),
+         :ok <- assign_outbound_profile_to_application(application_id, profile["id"], api_key) do
+      {:ok, profile}
+    end
+  end
+
+  defp maybe_setup_outbound_profile(_params, _application_id, _api_key) do
+    {:ok, nil}
+  end
 
   defp maybe_assign_phone_number(%{phone_number: phone_number}, application_id, api_key)
        when is_binary(phone_number) and phone_number != "" do
