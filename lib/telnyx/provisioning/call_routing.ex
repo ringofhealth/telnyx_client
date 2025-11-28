@@ -230,9 +230,10 @@ defmodule Telnyx.Provisioning.CallRouting do
   @spec assign_outbound_profile_to_application(String.t(), String.t(), String.t()) ::
           :ok | {:error, Error.t()}
   def assign_outbound_profile_to_application(application_id, profile_id, api_key) do
+    # Telnyx API requires nested structure for outbound settings
     case CallControlApplication.update(
            application_id,
-           %{outbound_voice_profile_id: profile_id},
+           %{"outbound" => %{"outbound_voice_profile_id" => profile_id}},
            api_key
          ) do
       {:ok, _updated} -> :ok
