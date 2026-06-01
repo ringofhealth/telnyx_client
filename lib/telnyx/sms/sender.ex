@@ -71,8 +71,11 @@ defmodule Telnyx.SMS.Sender do
 
   defp encode_request_body(message) do
     case Jason.encode(Message.to_api_params(message)) do
-      {:ok, json} -> {:ok, json}
-      {:error, reason} -> {:error, Telnyx.Error.unknown("JSON encoding failed: #{inspect(reason)}")}
+      {:ok, json} ->
+        {:ok, json}
+
+      {:error, reason} ->
+        {:error, Telnyx.Error.unknown("JSON encoding failed: #{inspect(reason)}")}
     end
   end
 

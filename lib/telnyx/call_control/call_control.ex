@@ -218,19 +218,21 @@ defmodule Telnyx.CallControl do
     :telemetry.span([:telnyx, :call_control, action], metadata, fn ->
       case do_execute_command(action, call_control_id, params, opts) do
         {:ok, result} = success ->
-          telemetry_metadata = Map.merge(metadata, %{
-            status: :success,
-            command_id: result.command_id
-          })
+          telemetry_metadata =
+            Map.merge(metadata, %{
+              status: :success,
+              command_id: result.command_id
+            })
 
           {success, telemetry_metadata}
 
         {:error, error} = failure ->
-          telemetry_metadata = Map.merge(metadata, %{
-            status: :error,
-            error_type: error.type,
-            error_code: error.code
-          })
+          telemetry_metadata =
+            Map.merge(metadata, %{
+              status: :error,
+              error_type: error.type,
+              error_code: error.code
+            })
 
           {failure, telemetry_metadata}
       end
@@ -275,8 +277,11 @@ defmodule Telnyx.CallControl do
 
   defp encode_body(params) do
     case Jason.encode(params) do
-      {:ok, json} -> {:ok, json}
-      {:error, reason} -> {:error, Telnyx.Error.unknown("JSON encoding failed: #{inspect(reason)}")}
+      {:ok, json} ->
+        {:ok, json}
+
+      {:error, reason} ->
+        {:error, Telnyx.Error.unknown("JSON encoding failed: #{inspect(reason)}")}
     end
   end
 

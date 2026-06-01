@@ -59,21 +59,23 @@ defmodule Telnyx.SMS do
     :telemetry.span([:telnyx, :sms, :send], metadata, fn ->
       case do_send(message_params, config) do
         {:ok, result} = success ->
-          telemetry_metadata = Map.merge(metadata, %{
-            status: :success,
-            message_id: result.id,
-            parts: result.parts,
-            cost: result.cost
-          })
+          telemetry_metadata =
+            Map.merge(metadata, %{
+              status: :success,
+              message_id: result.id,
+              parts: result.parts,
+              cost: result.cost
+            })
 
           {success, telemetry_metadata}
 
         {:error, error} = failure ->
-          telemetry_metadata = Map.merge(metadata, %{
-            status: :error,
-            error_type: error.type,
-            error_code: error.code
-          })
+          telemetry_metadata =
+            Map.merge(metadata, %{
+              status: :error,
+              error_type: error.type,
+              error_code: error.code
+            })
 
           {failure, telemetry_metadata}
       end

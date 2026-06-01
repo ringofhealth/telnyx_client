@@ -82,11 +82,12 @@ defmodule Telnyx.SMS.Message do
   """
   @spec merge_with_config(t(), Telnyx.Config.t()) :: t()
   def merge_with_config(%__MODULE__{} = message, %Telnyx.Config{} = config) do
-    %{message |
-      from: message.from || config.default_from,
-      messaging_profile_id: message.messaging_profile_id || config.messaging_profile_id,
-      webhook_url: message.webhook_url || config.webhook_url,
-      webhook_failover_url: message.webhook_failover_url || config.webhook_failover_url
+    %{
+      message
+      | from: message.from || config.default_from,
+        messaging_profile_id: message.messaging_profile_id || config.messaging_profile_id,
+        webhook_url: message.webhook_url || config.webhook_url,
+        webhook_failover_url: message.webhook_failover_url || config.webhook_failover_url
     }
   end
 
@@ -98,7 +99,7 @@ defmodule Telnyx.SMS.Message do
 
   defp validate_required_string(params, field) do
     value = get_param(params, field)
-    
+
     case value do
       nil ->
         {:error, Telnyx.Error.validation("Field '#{field}' is required")}

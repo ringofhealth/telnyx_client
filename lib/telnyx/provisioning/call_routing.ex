@@ -106,9 +106,11 @@ defmodule Telnyx.Provisioning.CallRouting do
          {:ok, webhook_event_url} <- get_required(params, :webhook_event_url),
          app_params <- build_app_params(webhook_event_url, params),
          {:ok, application} <- ensure_application_exists(application_name, app_params, api_key),
-         {:ok, outbound_profile} <- maybe_setup_outbound_profile(params, application["id"], api_key),
+         {:ok, outbound_profile} <-
+           maybe_setup_outbound_profile(params, application["id"], api_key),
          {:ok, phone_number} <- maybe_assign_phone_number(params, application["id"], api_key) do
-      {:ok, %{application: application, outbound_profile: outbound_profile, phone_number: phone_number}}
+      {:ok,
+       %{application: application, outbound_profile: outbound_profile, phone_number: phone_number}}
     end
   end
 

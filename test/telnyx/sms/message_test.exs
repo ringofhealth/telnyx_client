@@ -76,7 +76,7 @@ defmodule Telnyx.SMS.MessageTest do
     end
 
     test "returns error when 'to' is not a string" do
-      params = %{to: 19876543210, text: "Hello!"}
+      params = %{to: 19_876_543_210, text: "Hello!"}
 
       assert {:error, %Error{type: :validation, message: "Field 'to' must be a string"}} =
                Message.new(params)

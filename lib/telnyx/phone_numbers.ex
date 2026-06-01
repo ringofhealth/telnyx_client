@@ -211,11 +211,11 @@ defmodule Telnyx.PhoneNumbers do
       {:ok, body} ->
         case FinchClient.patch("/phone_numbers/#{phone_number_id}", headers, body, 10_000) do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
-        case Jason.decode(response_body) do
-          {:ok, %{"data" => data}} -> {:ok, data}
-          {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
-          {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
-        end
+            case Jason.decode(response_body) do
+              {:ok, %{"data" => data}} -> {:ok, data}
+              {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+              {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
+            end
 
           {:ok, %{status: status, body: response_body}} ->
             parse_error_response(response_body, status)
@@ -318,7 +318,10 @@ defmodule Telnyx.PhoneNumbers do
       when is_boolean(enabled?) and is_binary(forwarding_type) do
     with {:ok, voice_settings} <- get_voice(phone_number_id, api_key) do
       phone_number_id
-      |> update_voice(build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type), api_key)
+      |> update_voice(
+        build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type),
+        api_key
+      )
     end
   end
 
@@ -358,7 +361,12 @@ defmodule Telnyx.PhoneNumbers do
 
     case Jason.encode(params) do
       {:ok, body} ->
-        case FinchClient.patch("/phone_numbers/#{phone_number_id}/messaging", headers, body, 10_000) do
+        case FinchClient.patch(
+               "/phone_numbers/#{phone_number_id}/messaging",
+               headers,
+               body,
+               10_000
+             ) do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
             case Jason.decode(response_body) do
               {:ok, %{"data" => data}} -> {:ok, data}
@@ -418,8 +426,12 @@ defmodule Telnyx.PhoneNumbers do
     case list(api_key) do
       {:ok, phone_numbers} ->
         case Enum.find(phone_numbers, fn pn -> pn["phone_number"] == phone_number end) do
-          nil -> {:error, Telnyx.Error.validation("Phone number not found", code: "phone_number_not_found")}
-          phone_number_record -> {:ok, phone_number_record}
+          nil ->
+            {:error,
+             Telnyx.Error.validation("Phone number not found", code: "phone_number_not_found")}
+
+          phone_number_record ->
+            {:ok, phone_number_record}
         end
 
       {:error, error} ->
@@ -430,27 +442,39 @@ defmodule Telnyx.PhoneNumbers do
   @doc """
   Resolves a phone number string to its Telnyx `phone_number_id`.
 
-  Convenience wrapper around `find_by_number/2` that resolves the API key
-  from application config and returns just the `"id"` of the matched record.
-  Other failure modes (missing key, network, the `phone_number_not_found`
-  validation error from `find_by_number/2`) propagate as `%Telnyx.Error{}`
+  Convenience wrapper around `find_by_number/2` that returns just the `"id"`
+  of the matched record. The `phone_number_not_found` validation error from
+  `find_by_number/2` and any other failure pass through as `%Telnyx.Error{}`
   so callers can pattern match against the existing error type.
 
   ## Examples
 
-      iex> Telnyx.PhoneNumbers.find_phone_number_id("+14165551234")
+      iex> Telnyx.PhoneNumbers.find_phone_number_id("+14165551234", api_key)
       {:ok, "2922922584783717817"}
 
-      iex> Telnyx.PhoneNumbers.find_phone_number_id("+10000000000")
+      iex> Telnyx.PhoneNumbers.find_phone_number_id("+10000000000", api_key)
       {:error, %Telnyx.Error{code: "phone_number_not_found"}}
 
+  """
+  @spec find_phone_number_id(String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, Telnyx.Error.t()}
+  def find_phone_number_id(phone_number, api_key)
+      when is_binary(phone_number) and is_binary(api_key) do
+    with {:ok, record} <- find_by_number(phone_number, api_key) do
+      extract_phone_number_id(record)
+    end
+  end
+
+  @doc """
+  Convenience variant of `find_phone_number_id/2` that resolves the API key
+  from application config, matching the resolution used by
+  `Telnyx.CallControl`.
   """
   @spec find_phone_number_id(String.t()) ::
           {:ok, String.t()} | {:error, Telnyx.Error.t()}
   def find_phone_number_id(phone_number) when is_binary(phone_number) do
-    with {:ok, api_key} <- get_api_key(),
-         {:ok, record} <- find_by_number(phone_number, api_key) do
-      extract_phone_number_id(record)
+    with {:ok, api_key} <- get_api_key() do
+      find_phone_number_id(phone_number, api_key)
     end
   end
 
@@ -523,13 +547,27 @@ defmodule Telnyx.PhoneNumbers do
     end
   end
 
-  defp build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type) do
+  # Exposed for direct testing of payload semantics. Not part of the public
+  # API — callers should use `set_call_forwarding/4` or `/5`.
+  @doc false
+  def build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type) do
     existing_forwarding = Map.get(voice_settings, "call_forwarding", %{})
+
+    # When disabling, never carry the previous destination forward. The
+    # caller's explicit nil means "clear it"; falling back to the existing
+    # carrier value would silently re-arm the previous number the next time
+    # someone enables without passing one.
+    effective_forwards_to =
+      if enabled? do
+        forwards_to || Map.get(existing_forwarding, "forwards_to")
+      else
+        forwards_to
+      end
 
     forwarding =
       %{
         "call_forwarding_enabled" => enabled?,
-        "forwards_to" => forwards_to || Map.get(existing_forwarding, "forwards_to"),
+        "forwards_to" => effective_forwards_to,
         "forwarding_type" =>
           forwarding_type || Map.get(existing_forwarding, "forwarding_type") || "always"
       }

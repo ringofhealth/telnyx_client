@@ -177,7 +177,12 @@ defmodule Telnyx.CallControlApplication do
 
     case Jason.encode(params) do
       {:ok, body} ->
-        case FinchClient.patch("/call_control_applications/#{application_id}", headers, body, 10_000) do
+        case FinchClient.patch(
+               "/call_control_applications/#{application_id}",
+               headers,
+               body,
+               10_000
+             ) do
           {:ok, %{status: status, body: response_body}} when status in 200..299 ->
             case Jason.decode(response_body) do
               {:ok, %{"data" => data}} -> {:ok, data}

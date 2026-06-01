@@ -102,6 +102,23 @@ defmodule Telnyx.PhoneNumbersTest do
     end
   end
 
+  describe "find_phone_number_id/2" do
+    test "propagates phone_number_not_found from find_by_number" do
+      assert {:error, %Error{}} =
+               PhoneNumbers.find_phone_number_id("+14165551234", "invalid-key")
+    end
+
+    test "does not consult application config — caller controls the api_key" do
+      # Setting the application key shouldn't matter when /2 is invoked.
+      previous = Application.get_env(:telnyx, :api_key)
+      Application.put_env(:telnyx, :api_key, "some-other-key")
+      on_exit(fn -> restore_api_key(previous) end)
+
+      assert {:error, %Error{}} =
+               PhoneNumbers.find_phone_number_id("+14165551234", "invalid-key-2")
+    end
+  end
+
   describe "find_phone_number_id/1" do
     setup :reset_api_key
 
@@ -232,6 +249,71 @@ defmodule Telnyx.PhoneNumbersTest do
 
       # nil values should be filtered out
       assert {:error, %Error{}} = PhoneNumbers.search_available(search_params, "invalid-key")
+    end
+  end
+
+  describe "build_call_forwarding_payload/4" do
+    @existing_voice %{
+      "call_forwarding" => %{
+        "call_forwarding_enabled" => true,
+        "forwards_to" => "+14160000000",
+        "forwarding_type" => "always"
+      },
+      "cnam_listing" => %{"cnam_listing_enabled" => false}
+    }
+
+    test "uses the provided forwards_to when enabling" do
+      payload =
+        PhoneNumbers.build_call_forwarding_payload(
+          @existing_voice,
+          true,
+          "+14165551234",
+          "always"
+        )
+
+      assert payload["call_forwarding"]["call_forwarding_enabled"] == true
+      assert payload["call_forwarding"]["forwards_to"] == "+14165551234"
+    end
+
+    test "falls back to existing forwards_to when enabling without an explicit destination" do
+      payload =
+        PhoneNumbers.build_call_forwarding_payload(@existing_voice, true, nil, "always")
+
+      assert payload["call_forwarding"]["forwards_to"] == "+14160000000"
+    end
+
+    test "does NOT carry forward existing destination when disabling with nil" do
+      payload =
+        PhoneNumbers.build_call_forwarding_payload(@existing_voice, false, nil, "always")
+
+      assert payload["call_forwarding"]["call_forwarding_enabled"] == false
+      refute Map.has_key?(payload["call_forwarding"], "forwards_to")
+    end
+
+    test "respects an explicit destination on the disable path" do
+      # Unusual but valid: caller knows what they want.
+      payload =
+        PhoneNumbers.build_call_forwarding_payload(
+          @existing_voice,
+          false,
+          "+14165550000",
+          "always"
+        )
+
+      assert payload["call_forwarding"]["call_forwarding_enabled"] == false
+      assert payload["call_forwarding"]["forwards_to"] == "+14165550000"
+    end
+
+    test "preserves unrelated voice settings like cnam_listing" do
+      payload =
+        PhoneNumbers.build_call_forwarding_payload(
+          @existing_voice,
+          true,
+          "+14165551234",
+          "always"
+        )
+
+      assert payload["cnam_listing"] == %{"cnam_listing_enabled" => false}
     end
   end
 end

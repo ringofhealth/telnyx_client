@@ -12,7 +12,12 @@ defmodule Telnyx.Client.HttpClient do
   @doc """
   Performs a POST request to the Telnyx API.
   """
-  @callback post(url :: String.t(), headers :: headers(), body :: body(), timeout :: pos_integer()) ::
+  @callback post(
+              url :: String.t(),
+              headers :: headers(),
+              body :: body(),
+              timeout :: pos_integer()
+            ) ::
               {:ok, response()} | {:error, term()}
 
   @doc """
@@ -24,6 +29,11 @@ defmodule Telnyx.Client.HttpClient do
   @doc """
   Performs a PATCH request to the Telnyx API.
   """
-  @callback patch(url :: String.t(), headers :: headers(), body :: body(), timeout :: pos_integer()) ::
+  @callback patch(
+              url :: String.t(),
+              headers :: headers(),
+              body :: body(),
+              timeout :: pos_integer()
+            ) ::
               {:ok, response()} | {:error, term()}
 end
