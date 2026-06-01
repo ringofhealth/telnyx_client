@@ -7,6 +7,18 @@ defmodule Telnyx.PhoneNumbers do
 
   alias Telnyx.Client.FinchClient
 
+  @mutable_voice_fields ~w(
+    tech_prefix_enabled
+    translated_number
+    caller_id_name_enabled
+    call_forwarding
+    cnam_listing
+    usage_payment_method
+    media_features
+    call_recording
+    inbound_call_screening
+  )
+
   @doc """
   Searches for available phone numbers.
 
@@ -221,6 +233,84 @@ defmodule Telnyx.PhoneNumbers do
   end
 
   @doc """
+  Gets voice settings for a phone number.
+
+  This reads `/v2/phone_numbers/{id}/voice`, which includes carrier-side
+  routing settings such as `call_forwarding`.
+  """
+  @spec get_voice(String.t(), String.t()) :: {:ok, map()} | {:error, Telnyx.Error.t()}
+  def get_voice(phone_number_id, api_key) do
+    headers = [
+      {"Accept", "application/json"},
+      {"Authorization", "Bearer #{api_key}"}
+    ]
+
+    case FinchClient.get("/phone_numbers/#{phone_number_id}/voice", headers, 10_000) do
+      {:ok, %{status: status, body: response_body}} when status in 200..299 ->
+        decode_data_response(response_body)
+
+      {:ok, %{status: status, body: response_body}} ->
+        parse_error_response(response_body, status)
+
+      {:error, :timeout} ->
+        {:error, Telnyx.Error.network("Request timeout")}
+
+      {:error, reason} ->
+        {:error, Telnyx.Error.network("HTTP request failed: #{inspect(reason)}")}
+    end
+  end
+
+  @doc """
+  Updates voice settings for a phone number.
+
+  Callers should pass the complete mutable voice-settings payload they want
+  Telnyx to persist. For call forwarding, prefer
+  `set_call_forwarding/5`, which performs the read-modify-write needed to
+  preserve unrelated voice settings.
+  """
+  @spec update_voice(String.t(), map(), String.t()) :: {:ok, map()} | {:error, Telnyx.Error.t()}
+  def update_voice(phone_number_id, params, api_key) do
+    headers = [
+      {"Content-Type", "application/json"},
+      {"Accept", "application/json"},
+      {"Authorization", "Bearer #{api_key}"}
+    ]
+
+    case Jason.encode(params) do
+      {:ok, body} ->
+        case FinchClient.patch("/phone_numbers/#{phone_number_id}/voice", headers, body, 10_000) do
+          {:ok, %{status: status, body: response_body}} when status in 200..299 ->
+            decode_data_response(response_body)
+
+          {:ok, %{status: status, body: response_body}} ->
+            parse_error_response(response_body, status)
+
+          {:error, :timeout} ->
+            {:error, Telnyx.Error.network("Request timeout")}
+
+          {:error, reason} ->
+            {:error, Telnyx.Error.network("HTTP request failed: #{inspect(reason)}")}
+        end
+
+      {:error, reason} ->
+        {:error, Telnyx.Error.unknown("JSON encoding failed: #{inspect(reason)}")}
+    end
+  end
+
+  @doc """
+  Enables or disables call forwarding while preserving unrelated voice settings.
+  """
+  @spec set_call_forwarding(String.t(), boolean(), String.t() | nil, String.t(), String.t()) ::
+          {:ok, map()} | {:error, Telnyx.Error.t()}
+  def set_call_forwarding(phone_number_id, enabled?, forwards_to, forwarding_type, api_key)
+      when is_boolean(enabled?) and is_binary(forwarding_type) do
+    with {:ok, voice_settings} <- get_voice(phone_number_id, api_key) do
+      phone_number_id
+      |> update_voice(build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type), api_key)
+    end
+  end
+
+  @doc """
   Assigns a phone number to a messaging profile.
 
   ## Examples
@@ -370,5 +460,35 @@ defmodule Telnyx.PhoneNumbers do
       {:error, _reason} ->
         {:error, Telnyx.Error.api("Invalid error response", status_code: status_code)}
     end
+  end
+
+  defp decode_data_response(response_body) do
+    case Jason.decode(response_body) do
+      {:ok, %{"data" => data}} -> {:ok, data}
+      {:ok, _response} -> {:error, Telnyx.Error.api("Unexpected response format")}
+      {:error, _} -> {:error, Telnyx.Error.api("Invalid JSON response")}
+    end
+  end
+
+  defp build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type) do
+    existing_forwarding = Map.get(voice_settings, "call_forwarding", %{})
+
+    forwarding =
+      %{
+        "call_forwarding_enabled" => enabled?,
+        "forwards_to" => forwards_to || Map.get(existing_forwarding, "forwards_to"),
+        "forwarding_type" =>
+          forwarding_type || Map.get(existing_forwarding, "forwarding_type") || "always"
+      }
+      |> reject_nil_values()
+
+    voice_settings
+    |> Map.take(@mutable_voice_fields)
+    |> Map.put("call_forwarding", forwarding)
+    |> reject_nil_values()
+  end
+
+  defp reject_nil_values(map) do
+    Map.reject(map, fn {_key, value} -> is_nil(value) end)
   end
 end
