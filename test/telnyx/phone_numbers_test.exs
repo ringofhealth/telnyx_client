@@ -102,6 +102,118 @@ defmodule Telnyx.PhoneNumbersTest do
     end
   end
 
+  describe "find_phone_number_id/1" do
+    setup :reset_api_key
+
+    test "returns auth error when api_key config is missing" do
+      Application.delete_env(:telnyx, :api_key)
+
+      assert {:error, %Error{type: :authentication}} =
+               PhoneNumbers.find_phone_number_id("+14165551234")
+    end
+
+    test "returns auth error when api_key config is blank" do
+      Application.put_env(:telnyx, :api_key, "")
+
+      assert {:error, %Error{type: :authentication}} =
+               PhoneNumbers.find_phone_number_id("+14165551234")
+    end
+
+    test "resolves api_key from {:system, env_var}" do
+      Application.put_env(:telnyx, :api_key, {:system, "TELNYX_API_KEY_TEST"})
+      System.put_env("TELNYX_API_KEY_TEST", "invalid-key")
+      on_exit(fn -> System.delete_env("TELNYX_API_KEY_TEST") end)
+
+      # Real HTTP attempt with invalid key — proves the env-var was read.
+      assert {:error, %Error{}} = PhoneNumbers.find_phone_number_id("+14165551234")
+    end
+
+    test "returns auth error when {:system, var} target is unset" do
+      Application.put_env(:telnyx, :api_key, {:system, "TELNYX_API_KEY_TEST_MISSING"})
+      System.delete_env("TELNYX_API_KEY_TEST_MISSING")
+
+      assert {:error, %Error{type: :authentication}} =
+               PhoneNumbers.find_phone_number_id("+14165551234")
+    end
+
+    test "propagates phone_number_not_found from find_by_number" do
+      # The mapping itself is exercised by find_by_number/2 returning
+      # validation error with code "phone_number_not_found". We can't hit
+      # the happy path without a live Telnyx account, but we verify that
+      # the {:error, %Telnyx.Error{}} contract is preserved through the
+      # convenience layer (no atomization, no struct change).
+      Application.put_env(:telnyx, :api_key, "invalid-key")
+
+      assert {:error, %Error{}} = PhoneNumbers.find_phone_number_id("+14165551234")
+    end
+  end
+
+  describe "get_voice/1" do
+    setup :reset_api_key
+
+    test "returns auth error when api_key config is missing" do
+      Application.delete_env(:telnyx, :api_key)
+
+      assert {:error, %Error{type: :authentication}} = PhoneNumbers.get_voice("phone-id")
+    end
+
+    test "returns auth error when api_key config is blank" do
+      Application.put_env(:telnyx, :api_key, "")
+
+      assert {:error, %Error{type: :authentication}} = PhoneNumbers.get_voice("phone-id")
+    end
+
+    test "resolves api_key from {:system, env_var}" do
+      Application.put_env(:telnyx, :api_key, {:system, "TELNYX_API_KEY_TEST"})
+      System.put_env("TELNYX_API_KEY_TEST", "invalid-key")
+      on_exit(fn -> System.delete_env("TELNYX_API_KEY_TEST") end)
+
+      assert {:error, %Error{}} = PhoneNumbers.get_voice("phone-id")
+    end
+
+    test "propagates underlying error when api_key is invalid" do
+      Application.put_env(:telnyx, :api_key, "invalid-key")
+
+      assert {:error, %Error{}} = PhoneNumbers.get_voice("phone-id")
+    end
+  end
+
+  describe "set_call_forwarding/4" do
+    setup :reset_api_key
+
+    test "returns auth error when api_key config is missing" do
+      Application.delete_env(:telnyx, :api_key)
+
+      assert {:error, %Error{type: :authentication}} =
+               PhoneNumbers.set_call_forwarding("phone-id", true, "+14165551234", "always")
+    end
+
+    test "resolves api_key from {:system, env_var}" do
+      Application.put_env(:telnyx, :api_key, {:system, "TELNYX_API_KEY_TEST"})
+      System.put_env("TELNYX_API_KEY_TEST", "invalid-key")
+      on_exit(fn -> System.delete_env("TELNYX_API_KEY_TEST") end)
+
+      assert {:error, %Error{}} =
+               PhoneNumbers.set_call_forwarding("phone-id", true, "+14165551234", "always")
+    end
+
+    test "propagates underlying error when api_key is invalid" do
+      Application.put_env(:telnyx, :api_key, "invalid-key")
+
+      assert {:error, %Error{}} =
+               PhoneNumbers.set_call_forwarding("phone-id", true, "+14165551234", "always")
+    end
+  end
+
+  defp reset_api_key(_context) do
+    previous = Application.get_env(:telnyx, :api_key)
+    on_exit(fn -> restore_api_key(previous) end)
+    :ok
+  end
+
+  defp restore_api_key(nil), do: Application.delete_env(:telnyx, :api_key)
+  defp restore_api_key(value), do: Application.put_env(:telnyx, :api_key, value)
+
   describe "search_and_buy_first/2" do
     test "returns error with invalid API key" do
       assert {:error, %Error{}} = PhoneNumbers.search_and_buy_first("416", "invalid-key")

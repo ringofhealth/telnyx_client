@@ -261,6 +261,18 @@ defmodule Telnyx.PhoneNumbers do
   end
 
   @doc """
+  Convenience variant of `get_voice/2` that resolves the API key from
+  application config (`config :telnyx, api_key: ...`, optionally `{:system,
+  "TELNYX_API_KEY"}`), matching the resolution used by `Telnyx.CallControl`.
+  """
+  @spec get_voice(String.t()) :: {:ok, map()} | {:error, Telnyx.Error.t()}
+  def get_voice(phone_number_id) when is_binary(phone_number_id) do
+    with {:ok, api_key} <- get_api_key() do
+      get_voice(phone_number_id, api_key)
+    end
+  end
+
+  @doc """
   Updates voice settings for a phone number.
 
   Callers should pass the complete mutable voice-settings payload they want
@@ -307,6 +319,20 @@ defmodule Telnyx.PhoneNumbers do
     with {:ok, voice_settings} <- get_voice(phone_number_id, api_key) do
       phone_number_id
       |> update_voice(build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type), api_key)
+    end
+  end
+
+  @doc """
+  Convenience variant of `set_call_forwarding/5` that resolves the API key
+  from application config, matching the resolution used by
+  `Telnyx.CallControl`.
+  """
+  @spec set_call_forwarding(String.t(), boolean(), String.t() | nil, String.t()) ::
+          {:ok, map()} | {:error, Telnyx.Error.t()}
+  def set_call_forwarding(phone_number_id, enabled?, forwards_to, forwarding_type)
+      when is_binary(phone_number_id) and is_boolean(enabled?) and is_binary(forwarding_type) do
+    with {:ok, api_key} <- get_api_key() do
+      set_call_forwarding(phone_number_id, enabled?, forwards_to, forwarding_type, api_key)
     end
   end
 
@@ -402,6 +428,33 @@ defmodule Telnyx.PhoneNumbers do
   end
 
   @doc """
+  Resolves a phone number string to its Telnyx `phone_number_id`.
+
+  Convenience wrapper around `find_by_number/2` that resolves the API key
+  from application config and returns just the `"id"` of the matched record.
+  Other failure modes (missing key, network, the `phone_number_not_found`
+  validation error from `find_by_number/2`) propagate as `%Telnyx.Error{}`
+  so callers can pattern match against the existing error type.
+
+  ## Examples
+
+      iex> Telnyx.PhoneNumbers.find_phone_number_id("+14165551234")
+      {:ok, "2922922584783717817"}
+
+      iex> Telnyx.PhoneNumbers.find_phone_number_id("+10000000000")
+      {:error, %Telnyx.Error{code: "phone_number_not_found"}}
+
+  """
+  @spec find_phone_number_id(String.t()) ::
+          {:ok, String.t()} | {:error, Telnyx.Error.t()}
+  def find_phone_number_id(phone_number) when is_binary(phone_number) do
+    with {:ok, api_key} <- get_api_key(),
+         {:ok, record} <- find_by_number(phone_number, api_key) do
+      extract_phone_number_id(record)
+    end
+  end
+
+  @doc """
   Searches for and purchases the first available phone number in an area code.
 
   ## Examples
@@ -490,5 +543,39 @@ defmodule Telnyx.PhoneNumbers do
 
   defp reject_nil_values(map) do
     Map.reject(map, fn {_key, value} -> is_nil(value) end)
+  end
+
+  defp extract_phone_number_id(%{"id" => id}) when is_binary(id) and id != "", do: {:ok, id}
+
+  defp extract_phone_number_id(_),
+    do: {:error, Telnyx.Error.api("Phone number record missing id")}
+
+  # API key resolution mirrors `Telnyx.CallControl.get_api_key/1`. Source order:
+  # 1. Explicit `:api_key` opt (not supported in the no-opts arities — added when
+  #    consumers ask for it).
+  # 2. `Application.get_env(:telnyx, :api_key)` — accepts a literal string or
+  #    `{:system, "ENV_VAR"}`.
+  defp get_api_key do
+    case get_api_key_from_config() do
+      nil ->
+        {:error,
+         Telnyx.Error.authentication(
+           "API key not found. Set :telnyx, :api_key in application config or " <>
+             "TELNYX_API_KEY environment variable"
+         )}
+
+      "" ->
+        {:error, Telnyx.Error.authentication("API key cannot be empty")}
+
+      key when is_binary(key) ->
+        {:ok, key}
+    end
+  end
+
+  defp get_api_key_from_config do
+    case Application.get_env(:telnyx, :api_key) do
+      {:system, env_var} -> System.get_env(env_var)
+      value -> value
+    end
   end
 end
