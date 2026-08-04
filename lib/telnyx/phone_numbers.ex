@@ -553,10 +553,13 @@ defmodule Telnyx.PhoneNumbers do
   def build_call_forwarding_payload(voice_settings, enabled?, forwards_to, forwarding_type) do
     existing_forwarding = Map.get(voice_settings, "call_forwarding", %{})
 
-    # When disabling, never carry the previous destination forward. The
-    # caller's explicit nil means "clear it"; falling back to the existing
-    # carrier value would silently re-arm the previous number the next time
-    # someone enables without passing one.
+    # When disabling, don't re-arm a previous destination by echoing the
+    # stored value back. `enabled? == false` with `forwards_to == nil` lets
+    # `reject_nil_values/1` drop the key from the PATCH payload, so Telnyx
+    # keeps whatever it had stored but `call_forwarding_enabled: false`
+    # gates routing regardless. When enabling without an explicit
+    # destination, we fall back to the existing carrier value so callers
+    # can flip `enabled? -> true` without re-specifying the number.
     effective_forwards_to =
       if enabled? do
         forwards_to || Map.get(existing_forwarding, "forwards_to")

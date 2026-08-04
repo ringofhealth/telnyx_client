@@ -36,4 +36,13 @@ defmodule Telnyx.Client.HttpClient do
               timeout :: pos_integer()
             ) ::
               {:ok, response()} | {:error, term()}
+
+  @doc "Performs a PUT request to the Telnyx API."
+  @callback put(
+              url :: String.t(),
+              headers :: headers(),
+              body :: body(),
+              timeout :: pos_integer()
+            ) ::
+              {:ok, response()} | {:error, term()}
 end
